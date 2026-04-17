@@ -12,10 +12,8 @@ pp-book/
     preface.tex
     notation.tex
   chapters/
-    ch01-intro.tex
-    ch02-models.tex
+    chNN.tex
   backmatter/
     bibliography.bib
-    appendix-a.tex
   figures/
     (your images)

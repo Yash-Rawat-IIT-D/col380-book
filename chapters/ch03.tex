@@ -1,0 +1,290 @@
+\newcommand{\scribefigureplaceholder}[2]{%
+\begin{figure}[ht]
+  \centering
+  \fbox{%
+    \parbox[c][2.3in][c]{0.84\textwidth}{%
+      \centering
+      \textbf{Illustration Placeholder}\\[0.5em]
+      #2
+    }%
+  }
+  \caption{#1}
+\end{figure}
+}
+
+\newcommand{\scribecodeplaceholder}[2]{%
+\begin{ppprogram}{#1}{#2}
+  \centering
+  \fbox{%
+    \parbox[c][2.5in][c]{0.90\linewidth}{%
+      \centering
+      \textbf{Code Placeholder}\\[0.5em]
+      Insert the final code or pseudocode from the lecture demo here.
+    }%
+  }
+\end{ppprogram}
+}
+
+\chapter{Performance Metrics and Basic PRAM Algorithms}
+
+\section{Metrics We Will Use}
+For an input of size $n$, let $T(n,1)$ denote the best sequential running time
+and $T(n,p)$ the running time on $p$ processors. The central performance measures
+used throughout the lecture are:
+\begin{align*}
+S(n,p) &= \frac{T(n,1)}{T(n,p)}, \\
+C(n,p) &= p \cdot T(n,p), \\
+E(n,p) &= \frac{S(n,p)}{p} = \frac{T(n,1)}{C(n,p)}.
+\end{align*}
+Here $S(n,p)$ is the speedup, $C(n,p)$ is the cost, and $E(n,p)$ is the efficiency.
+The parallelism overhead is
+\[
+T_o(n,p) = C(n,p) - T(n,1).
+\]
+An algorithm is \ppterm{cost-optimal} when $C(n,p) = O(T(n,1))$, and is
+\ppterm{work-efficient} when the total number of primitive operations remains
+within a constant factor of the best sequential algorithm. These notions will
+be used repeatedly when comparing search, reduction, and prefix-sum algorithms
+\citep{amdahl1967,gustafson1988,pacheco2011}.
+
+\begin{ppkey}
+Fixed-size speedup is limited by the sequential fraction of the computation,
+but scalability improves when the problem size grows with the number of processors.
+\end{ppkey}
+
+\section{The PRAM Abstraction}
+The lecture uses the PRAM model as an idealised machine for algorithm design:
+processors are synchronous, each processor has a private identity and local
+memory, and shared-memory accesses are treated as constant-time operations.
+Although unrealistic as a hardware model, PRAM is extremely useful for asymptotic
+reasoning.
+
+\begin{ppdefn}
+\ppterm{EREW} (exclusive read, exclusive write) allows at most one processor to
+read or write a shared location in a step. \ppterm{CREW} permits concurrent
+reads but still requires exclusive writes. \ppterm{CRCW} permits both concurrent
+reads and concurrent writes, but a write-conflict rule must then be specified.
+\end{ppdefn}
+
+Under CRCW, common variants include \ppterm{priority write}, where the highest-priority
+processor wins; \ppterm{common write}, where all concurrent writers must write the
+same value; and \ppterm{arbitrary write}, where one of the proposed values is chosen
+arbitrarily. The choice of model matters because it changes which synchronisation
+patterns are legal and how much coordination is needed.
+
+\section{Parallel Linear Search}
+Suppose an unsorted array $A[1 \dots n]$ is searched for a value $x$ using $p$
+processors. A natural block-partitioned strategy assigns roughly $n/p$ elements
+to each processor. Each processor performs a local linear scan on its own block
+and produces one Boolean answer: whether $x$ was found in that block.
+
+The local scan takes $\Theta(n/p)$ time. These local answers can then be combined
+using a tree reduction with logical OR, which takes $\Theta(\log p)$ time. Hence
+\[
+T(n,p) = \Theta\left(\frac{n}{p} + \log p\right).
+\]
+The corresponding cost is
+\[
+C(n,p) = p \cdot T(n,p) = \Theta(n + p \log p).
+\]
+Therefore the algorithm is cost-optimal when $p \log p = O(n)$; in the common
+regime $n \gg p$, the scan term dominates and this reduction-based solution is
+close to work-efficient.
+
+\begin{ppnote}
+The tree-reduction version is EREW-safe because processors read disjoint input
+blocks and later reduce flags through disjoint pairs. No concurrent access to
+the same shared location is required.
+\end{ppnote}
+
+The lecture also discussed a stronger shared-memory variant in which processors
+write to a shared Boolean register such as \ppinline{found}. In a common-CRCW
+model, all successful processors may write the value \ppinline{true}, so the final
+combine can be reduced to constant time after the scan phase. This is faster,
+but it relies on a stronger concurrency model than the reduction-based EREW version.
+
+An alternate EREW-friendly strategy is to give one element to each processor and
+write hits into a private \ppinline{hit[i]} location. A subsequent tree OR-reduction
+over the hit array decides whether any processor found the target. With $n$ processors,
+this gives $\Theta(\log n)$ time and cleanly separates the private-write phase from
+the reduction phase.
+
+\scribefigureplaceholder{Block-partitioned search over an array}{
+Show an array divided into $p$ contiguous blocks, one processor per block, and a
+tree OR-reduction over the local Boolean answers.
+}
+
+\scribecodeplaceholder{Block-partitioned linear search with OR-reduction}{prog:block-search-placeholder}
+
+\section{Tree-Based Parallel Addition}
+A naive parallelisation of summation would let all processors update one shared
+\ppinline{sum} variable. This is a poor design: the updates must be serialised or
+protected, so the resulting algorithm gains little or no speedup.
+
+The correct approach is a reduction tree. Assume for simplicity that $n$ is a power
+of two. In round 1, adjacent pairs are added. In round 2, the stride doubles and
+the partial sums of length two are combined into sums of length four. After
+$\log_2 n$ rounds, one processor holds the total sum of all elements.
+
+With one processor per active array position in each round, the parallel time is
+$\Theta(\log n)$. The total amount of arithmetic work is
+\[
+\frac{n}{2} + \frac{n}{4} + \cdots + 1 = \Theta(n),
+\]
+which matches sequential summation up to constant factors. However, if $n$ processors
+are reserved throughout all $\log n$ rounds, the cost becomes $\Theta(n \log n)$,
+so the algorithm is not cost-optimal in that raw form even though the arithmetic
+work itself is linear.
+
+For $p < n$, a standard cost-optimal version first computes local sums over blocks
+of size about $n/p$, and then reduces the $p$ block sums in $\Theta(\log p)$ more
+steps. This yields
+\[
+T(n,p) = \Theta\left(\frac{n}{p} + \log p\right),
+\]
+which matches the block-partitioned search bound.
+
+\begin{pppitfall}
+Work and cost are not the same quantity. A reduction tree performs only $\Theta(n)$
+additions, but if too many processors sit idle across too many rounds, the total
+cost can still be $\Theta(n \log n)$.
+\end{pppitfall}
+
+\scribefigureplaceholder{Reduction tree for parallel addition}{
+Illustrate pairwise additions across rounds, with the stride doubling at each level
+until a single root stores the total sum.
+}
+
+\scribecodeplaceholder{Stride-based tree reduction for summation}{prog:parallel-sum-placeholder}
+
+\section{Parallel Prefix Sums}
+The prefix-sum or scan problem asks us to transform an input array
+$A[1 \dots n]$ into prefix sums. In the \ppterm{inclusive} version,
+\[
+B[i] = \sum_{j=1}^{i} A[j],
+\]
+whereas in the \ppterm{exclusive} version,
+\[
+B[i] = \sum_{j=1}^{i-1} A[j],
+\]
+with the convention that $B[1] = 0$. Sequentially, either version takes $\Theta(n)$
+time.
+
+\subsection{Hillis-Steele Scan}
+The Hillis-Steele scan proceeds in rounds. At round $d$, processor $i$ adds into
+its current value the entry from position $i - 2^{d-1}$, provided that this index
+exists. Conceptually, each round must read values from the \emph{previous} round,
+not partially updated values from the current round.
+
+\paragraph{Correctness proof by induction.}
+Let $B^{(0)}[i] = A[i]$. For each round $d \ge 1$, define
+\[
+B^{(d)}[i] =
+\begin{cases}
+B^{(d-1)}[i] + B^{(d-1)}[i - 2^{d-1}], & \text{if } i > 2^{d-1}, \\
+B^{(d-1)}[i], & \text{otherwise}.
+\end{cases}
+\]
+We claim that after round $d$, every index $i$ stores the sum of the last
+$\min(2^d,i)$ input values ending at position $i$:
+\[
+B^{(d)}[i] = \sum_{j=\max(1,\, i - 2^d + 1)}^{i} A[j].
+\]
+The proof is by induction on $d$.
+
+For the base case $d = 0$, we have $B^{(0)}[i] = A[i]$, which is exactly the sum
+over the last $\min(1,i) = 1$ entry ending at $i$.
+
+Now assume the claim holds after round $d-1$. Fix an index $i$.
+If $i \le 2^{d-1}$, then no update happens in round $d$, so
+$B^{(d)}[i] = B^{(d-1)}[i]$. By the induction hypothesis this is already
+\[
+\sum_{j=1}^{i} A[j]
+= \sum_{j=\max(1,\, i - 2^d + 1)}^{i} A[j],
+\]
+because $i - 2^d + 1 \le 1$ in this case.
+
+If instead $i > 2^{d-1}$, then by the update rule and the induction hypothesis,
+\begin{align*}
+B^{(d)}[i]
+&= B^{(d-1)}[i] + B^{(d-1)}[i - 2^{d-1}] \\
+&= \sum_{j=i-2^{d-1}+1}^{i} A[j]
+ + \sum_{j=\max(1,\, i-2^d+1)}^{i-2^{d-1}} A[j] \\
+&= \sum_{j=\max(1,\, i-2^d+1)}^{i} A[j].
+\end{align*}
+The two sums are over adjacent ranges, so together they cover exactly the last
+$\min(2^d,i)$ entries ending at position $i$.
+
+Therefore the claim holds for every round $d$. After
+$D = \lceil \log_2 n \rceil$ rounds we have $2^D \ge n$, so for every $i$,
+\[
+B^{(D)}[i] = \sum_{j=1}^{i} A[j],
+\]
+which is precisely the inclusive prefix sum. Hence the Hillis-Steele algorithm
+is correct.
+
+For the example array
+\[
+[3,1,4,5,1,9,2],
+\]
+the inclusive scan evolves as follows:
+\[
+[3,4,5,9,6,10,11],
+\]
+\[
+[3,4,8,13,11,19,17],
+\]
+\[
+[3,4,8,13,14,23,25].
+\]
+After $\lceil \log_2 n \rceil$ rounds, every position holds the correct prefix sum.
+
+The time is $\Theta(\log n)$ on $n$ processors, but every round touches $\Theta(n)$
+entries, so the total work is $\Theta(n \log n)$. Thus Hillis-Steele is easy to
+parallelise, but it is not work-efficient \citep{hillis1986,harris2007scan}.
+
+\scribefigureplaceholder{Round-by-round view of Hillis-Steele scan}{
+Show the array after each doubling step $d = 1,2,3$ so that the dependency pattern
+from index $i - 2^{d-1}$ is visually clear.
+}
+
+\scribecodeplaceholder{Hillis-Steele inclusive scan}{prog:hillis-steele-placeholder}
+
+\subsection{Blelloch Scan}
+Blelloch's algorithm improves the work bound by using two tree phases
+\citep{blelloch1990,harris2007scan}. For simplicity, assume the input size is a
+power of two; otherwise pad the array with zeros up to the next power of two.
+
+In the \ppterm{upsweep} (or reduction) phase, a balanced binary tree is built over
+the array. Each internal node stores the sum of its two children, so the root
+eventually stores the total sum of all elements. This phase resembles tree-based
+parallel addition.
+
+In the \ppterm{downsweep} phase, the root is first set to $0$. Then each internal
+node propagates prefix information downward as follows. If the parent currently
+stores $p$ and the left child previously stored a subtotal $t$, then the left child
+receives $p$ and the right child receives $p + t$. Repeating this from the root
+to the leaves yields the \emph{exclusive} scan.
+
+The inclusive scan can be recovered by adding the original input element-wise to
+the exclusive result. Across both phases, the total work is $\Theta(n)$ and the
+parallel time is $\Theta(\log n)$ on $n$ processors, so Blelloch scan is work-efficient.
+
+\begin{ppkey}
+Hillis-Steele gives a simple scan in $\Theta(\log n)$ time but spends $\Theta(n \log n)$
+work. Blelloch keeps the same asymptotic time while reducing the work to $\Theta(n)$.
+\end{ppkey}
+
+\scribefigureplaceholder{Blelloch upsweep and downsweep}{
+Draw a binary tree over the array, mark subtree sums during the upsweep, then show
+how setting the root to $0$ and propagating offsets downward produces the exclusive scan.
+}
+
+\scribecodeplaceholder{Blelloch exclusive scan with an inclusive conversion step}{prog:blelloch-placeholder}
+
+\section{Summary}
+Three themes recur across all of these examples. First, the computation model
+matters: the legality and cost of synchronisation depend on whether we are in EREW,
+CREW, or CRCW. Second, speedup alone is not enough; cost and work-efficiency are
+equally important. Third, good parallel algorithms combine local work with a small
+number of structured synchronisation phases, typically reductions or scans.

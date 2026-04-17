@@ -1,0 +1,110 @@
+
+Its [muffled] is n/p.
+
+And each processor looks at n/p mnay elements and figures out wether x appears in that block or not.
+SO each processor can do this in parallel so in o(1) time or rather O(n/p) time, they can look at their resepecgtive blocks
+Eventually there has to be a reduction. The reduction is on "whether or not there exists a processor which has found the value x in its respective block"
+
+Combining all the answers sequentially is O(p) time, so one could do that in parallel and check n/p block in parallel in n/p time -> not even n/p time if its a sorted list of elements
+then one can do even better. But if it is a unsorted list of elements then you do a linear scan of the block that is given to you then you do a reduction over p processors.
+If you do it sequentially then it is O(p) time but if you were to do a tree reduction style then it would be O(log(p)). You take two processors at a time, keep a [muffled] to figure out 
+whether one has found and other has not and then you can do it in Log(p) many bits.
+
+Therefore over p processors, the time  complexity comes down to O(n/p) scan over the array elements and log(p) many bits.
+
+Now if you think about which term dominates - one can analysis on. If n grows much larger than p then n/p is the dominating term. Well it turns out to be a [work?] efficient algorithm,
+block paritioned way of doing this linear search. This comes out to be work efficient because W comes about to be O(T(n,1)). Convince yourself that this is the case.
+
+Final Q - Under which model of computation would you want to implement this algorithm ? CRCW or EREW or [muffled] or CRVW ? Which one should it go to ? 
+There are no concurrent reads or writes, so CRCW doesnt make any sense we could be fine with [muffled again]. So this is safe read [muffled] under this model.
+
+But instead of doing this tree reduction, say we have had a shared register. A register that is shared across the processors and it stores a boolean value (found).
+So certainly EREW [ERPW?] is not going to be applicable since all the processes now have to synchronise over this shared memory. Now this falls under CRPW and CRCW but EREW doesnt make any sense here. Worse case time here is that block p [muffled] will go up since synchronisation over a single refister can be done in constant time. So it essentially become  
+[2 times over p ?].
+
+Q - "Why is CREW" 
+A - "Because there are concurrent reads over shared memory location". "Processors to avoid race conditions would be writing over exclusive regions"
+
+So if you have the EREW model then it is not going to be work efficient. YOu have to sequentialise every read and every write. EREW makes sense only when they are not overlapping 
+on their read and write set. Here it would not make sense because of shared register. For writes to shared memory, not everyone has to write. You could have CRCW and in CRCW - you could have concurrent writes and allow only those that have value 1. So in CREW, it would be [O(n/p + p)?] under the assumption that n grows much larger than p, n/p will be the dominating term. Infact p , plogp and logp will be dominated over with large n. Theta(n/p + p) if want to do an exclusive write, if concurrent write then it will be even more [better?].
+
+You could also have an alternate strategy where I am going to keep a marked array - a hit array. Which is sub[?] array of elements. If I provide one original element of the original array to each processor and if it finds x in what it is checking then it sets it own value in the hit array to 1. Now the processor can ofcourse check in O(1) time and update its hit location in O(1) time.But then you have to do a check over the hit array - "Whether or not there is some index that is set to 1" - Which means you would have to do some sort of a tree reduction where your reduction op is going to be or operation. The compuation will take another Log_2(n) phases. So T(n) is Theta(log(n)). This is EREW safe because primarily as each thread is accessing its own element and is not referring to shared locations. It doesn't need to refer to the shared locations. It only accesses the location that it own.
+
+================================================================================================================================================================ 
+
+So this was the discussion on linear search, we move onto Parallel addition.
+
+So tree based reduction over sum. So here is sequential code and this is problematic. If you want to parallelise this one, you have to keep a sum variable that is accumulation partial sums. So this means that this is a shared enetities, so we need CREW or CRCW or algo will have to be applied with a lot more synchronisation. If n was power of 2 - Then
+it happens in rounds that in first round (No assumption made on number of processor). A1 <= A1 and A2, A3 <= A3 and A4, ..... Pairwise element reduction in the first round. In the second round your stride increases. Now A1 <= A1 + A3, A5 <= A5 + A7 ..... This again takes Log_2(n) many rounds (Can figure out the time complexity and speed up and efficiency)
+
+Mow if you were to have this parallel solution through one shared concurr then this would be a very bad idea since CW to shared variable need to be serialised. Therefore there is no speedup 
+
+Q - "Why is this better than keeping local sums and adding them later ?" 
+A - "That's work efficient, this is not even work efficient. So what we said is - "Why not have p processors, chunk them up. Do local sums and then do this reduction. Reduction cant be avoided. It essentially boild down to the same complexity (O(n/p + logp)). So if you have EREW that wouldve been work but in such cases where you want to sequentalise this thing then T_p becomes Theta(n) and there is no speedup to be obtained. 
+
+[ Code Demo for this part 
+1) Codifies the stride, takes log_2(n) many phases
+2) The single statement is parallelised for its respective i
+3) Time analysis - In round i, we are going to make 2^(i+1) many additions in tree based ?
+4) Total work in the parallel system - n/2 many additions, n/4 many additions, ...., (Theta(n) = Hence Work efficient (Doing as much work as the best seqeuntial algorithms would have done))
+5) Assume each element to assign to a processor - So nlogn
+6) Cost Optimality Version : For p < n : Chunk up into n/p block. n/p additions locally for each proc and log_2(p) more phases. For cost optimality we need to as much work as efficient serial version (Theta(n)). So plog_2(p) should belong to Theta(n) -> Gives an upper bound on how much processors to use for the processor size
+
+What would be the speedup here ? Ratio of T(n,1)/T(n,p) ? What would be the expression
+--> We are assuming that now two processors are reading and writing to the same location in a give round (All three : EREW, CRCW, CREW ... will work ?)
+]
+
+================================================================================================================================================================ 
+
+So this takes us to the interesting part of the parallel algorithms aspect : The Prefix Sum problem - I have been given an aray A1 to An and I ask for partial sums
+s.t B1 <= A1, B2 <= A1 + A2. Two articulations : Inclusive Prefix Scan or Exlcusive Prefix Scan problem. Inclusive would say that for the ith index I would be storing the 
+partial sum of all indeices from 0 to i. Exlcusive prefix sum means sum off all elements from 0 to i-1 stored at index i.
+
+Formally the prefix arrays : B_i = B_i-1 + A_i. If we were to do it seqeuntially (prefix scan) it takes us Theta_(n) time (How ?? Trivially just one iterate over the entire array)
+
+I would like to parallelise this. How would we think of approaching this problem in parallel ? 
+Some approaches : 
+1) Some sort of a reduction over a binary tree (Split into two halves, Maybe like DCA ??)
+
+We saw the tree reduction example in parallel sum, The stride played a very important role there - as the rounds increase, we figured out where what results have to be store in.
+Same idea is applicable here - Hills Steele proposed the algorithm : Goes into rounds - At round d, a processor i -> Adds the element at index a[i - 2^{d-1}] if it exists with a[i].
+Clearly in log_2(p) many rounds, all the possible processors would be done. 
+
+[ Code Demo for this part - Write a explicit proof of why Hills Steele is correct ?? 
+Maybe an inductive argument that after step d, each index has the sum of last min(2^{d-1} + 1, ind) values (1 based index)]
+
+1) [3, 1, 4, 5, 1, 9 , 2] (Digits of Pi btw)
+2) In Round 1 : [3, 4, 5, 9, 6, 10, 11] (At d = 1)
+3) In Round 2 : [3, 4, 8, 13, 11, 19, 17] (At d = 2)
+4) In Round 3 : [3, 4, 8, 13, 14, 23, 25] (At d = 3)
+5) In Round 4 : Process terminates as 8 > 7 (Length of array) : We got correct array at the end ?  
+
+If n is too large : This is an inefficient parallel algorithm ?? This seems O(nlogn/p) ??
+In sequential setting it is Theta(n) (work time), but in parallel algorithm  
+
+Ofcourse there are log_2(n) many rounds and each round touches O(n) memory pairs. So the total work is O(nlogn). So this is not a Work efficient algorithm 
+since parallel algorithm will end up spending more resources than what is required. We figure out the speedups and efficiciencies, etc.
+
+(https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda)
+
+Blelloch Algorithm : Works in two phases
+
+1) Upward Phase : Build a reduction tree from the elements (same as the prefix sum where the stride increase with 2^(d-1) at depth d of the round) but a[2] <= a[1] + a[2], a[4] <= a[2] + a[4], .... The root a[8] will have sum all the elements. Now we have figured out all partial sums but these are not prefixes.
+
+How to assign the prfixe sum values in-situ in a using these values ? 
+
+2) Downward Phase : This hint should be enough for you to figure out, how prefixsums are stored at their respective indices (inclusive prefix scan version itself)
+   The Proposal is to go the left node and subtract its value from the parent's value and store it in that node (Lets see if that works ? - It will not work)
+   ..... (Some other process is being mentioned )
+
+Version that is easy to follow : 
+We begin by inserting 0 at the root (a[8]) and then we maintain the following invariant : 
+We pass down to the right node : the sum of the old value of left node and the value of current node
+We pass down the the left node : the value of the current node 
+If we are at leaf : We just sum with the value of that position and we are done
+
+Can this be done without doing making the root 0 ?
+    
+================================================================================================================================================================ 
+
+ 
