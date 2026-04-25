@@ -39,6 +39,22 @@
     MPI_Bcast,MPI_Reduce,MPI_Allreduce,MPI_Barrier,MPI_Scatter,MPI_Gather,
     MPI_Isend,MPI_Irecv,MPI_Wait,MPI_Test}
 }
+\lstdefinelanguage{Pseudocode}{
+  sensitive=false,
+  morekeywords={procedure,input,output,for,all,in,parallel,do,if,then,else,return,downto,to},
+  morecomment=[l]{//}
+}
+
+\lstdefinestyle{pppseudocode}{
+  style=ppcode,
+  mathescape=true,
+  numbers=left,
+  stepnumber=1,
+  numbersep=8pt,
+  numberstyle=\scriptsize\color{PPGray},
+  keywordstyle=\bfseries\color{PPBlue},
+  commentstyle=\itshape\color{PPGray}
+}
 
 % Program caption name
 \DeclareCaptionType{program}[Program][List of Programs]

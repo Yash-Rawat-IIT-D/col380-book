@@ -11,7 +11,7 @@
 \ProcessOptions\relax
 
 % Base class AFTER processing options
-\LoadClass[11pt,oneside,openany]{book}
+\LoadClass[10pt,oneside,openany]{book}
 
 % Now it is safe to load packages
 \RequirePackage{styles/ppbook}

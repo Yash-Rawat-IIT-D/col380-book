@@ -1,6 +1,6 @@
 PDF=book.pdf
 TEX=main.tex
-MAIN=$(basename $(TEX))
+MAIN=$(basename $(notdir $(TEX)))
 PDFLATEX=pdflatex
 BIBTEX=bibtex
 

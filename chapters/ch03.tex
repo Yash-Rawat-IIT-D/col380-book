@@ -48,29 +48,30 @@ be used repeatedly when comparing search, reduction, and prefix-sum algorithms
 \citep{amdahl1967,gustafson1988,pacheco2011}.
 
 \begin{ppkey}
-Fixed-size speedup is limited by the sequential fraction of the computation,
+ Fixed-size speedup is limited by the sequential fraction of the computation,
 but scalability improves when the problem size grows with the number of processors.
 \end{ppkey}
 
 \section{The PRAM Abstraction}
 The lecture uses the PRAM model as an idealised machine for algorithm design:
-processors are synchronous, each processor has a private identity and local
+All Processors are synchronous, each processor has a private identity and local
 memory, and shared-memory accesses are treated as constant-time operations.
-Although unrealistic as a hardware model, PRAM is extremely useful for asymptotic
-reasoning.
+Although unrealistic as a hardware model, it is extremely useful for asymptotic
+reasoning and analysis.
 
 \begin{ppdefn}
-\ppterm{EREW} (exclusive read, exclusive write) allows at most one processor to
-read or write a shared location in a step. \ppterm{CREW} permits concurrent
-reads but still requires exclusive writes. \ppterm{CRCW} permits both concurrent
-reads and concurrent writes, but a write-conflict rule must then be specified.
+\ppterm{EREW} (Exclusive Read, Exclusive Write) allows at most one processor to
+read or write a shared location in a step. \ppterm{CREW} permits Concurrent
+Reads but still requires Exclusive Writes. \ppterm{CRCW} permits both Concurrent
+Reads and Concurrent Writes, but with a write-conflict rule for tie breaking.
 \end{ppdefn}
 
-Under CRCW, common variants include \ppterm{priority write}, where the highest-priority
-processor wins; \ppterm{common write}, where all concurrent writers must write the
-same value; and \ppterm{arbitrary write}, where one of the proposed values is chosen
-arbitrarily. The choice of model matters because it changes which synchronisation
-patterns are legal and how much coordination is needed.
+Under CRCW, common variants include \ppterm{Priority Write}, where the highest-priority
+processor wins; \ppterm{Common Write}, where all concurrent writers must write the
+same value; and \ppterm{Arbitrary Write}, where one of the proposed values is chosen
+arbitrarily. The model you choose matters because it decides what kinds of 
+simultaneous access are allowed, and therefore how much extra coordination the processors need.
+
 
 \section{Parallel Linear Search}
 Suppose an unsorted array $A[1 \dots n]$ is searched for a value $x$ using $p$
@@ -87,12 +88,13 @@ The corresponding cost is
 \[
 C(n,p) = p \cdot T(n,p) = \Theta(n + p \log p).
 \]
-Therefore the algorithm is cost-optimal when $p \log p = O(n)$; in the common
-regime $n \gg p$, the scan term dominates and this reduction-based solution is
+Therefore the algorithm is cost-optimal when $p \log p = O(n)$; in the usual
+case where $n \gg p$, the scan term dominates and this reduction-based 
+\hyperref[prog:block-partitioned-search]{solution} is
 close to work-efficient.
 
 \begin{ppnote}
-The tree-reduction version is EREW-safe because processors read disjoint input
+The \hyperref[fig:block-search-part]{tree-reduction} version is EREW-safe because processors read disjoint input
 blocks and later reduce flags through disjoint pairs. No concurrent access to
 the same shared location is required.
 \end{ppnote}
@@ -109,19 +111,64 @@ over the hit array decides whether any processor found the target. With $n$ proc
 this gives $\Theta(\log n)$ time and cleanly separates the private-write phase from
 the reduction phase.
 
-\scribefigureplaceholder{Block-partitioned search over an array}{
-Show an array divided into $p$ contiguous blocks, one processor per block, and a
-tree OR-reduction over the local Boolean answers.
-}
+\begin{ppprogram}{Parallel linear search with one processor per element}{prog:parallel-linear-search}
+\begin{lstlisting}[language=Pseudocode,style=pppseudocode]
+Input:  array $A[1 \dots n]$, target value $x$
+Output: $\textsc{true}$ iff some entry equals $x$
 
-\scribecodeplaceholder{Block-partitioned linear search with OR-reduction}{prog:block-search-placeholder}
+for all $i \in \{1,\dots,n\}$ in parallel do
+    if $A[i] = x$ then
+        $R[i] \gets \textsc{true}$ // R[i] is same as hit[i]
+    else
+        $R[i] \gets \textsc{false}$ 
+
+for $d \gets 0$ to $\lceil \log_2 n \rceil - 1$ do
+    for all $i \in \{1,\dots,n\}$ in parallel do
+        if $(i - 1) \bmod 2^{d+1} = 0$ and $i + 2^d \le n$ then
+            $R[i] \gets R[i] \lor R[i + 2^d]$
+
+return $R[1]$
+\end{lstlisting}
+\end{ppprogram}
+
+\begin{ppprogram}{Block-partitioned linear search with OR-reduction}{prog:block-partitioned-search}
+\begin{lstlisting}[language=Pseudocode,style=pppseudocode]
+Input:  array $A[1 \dots n]$, target value $x$, $p$ processors
+Output: $\textsc{true}$ iff some entry equals $x$
+
+for all $q \in \{1,\dots,p\}$ in parallel do
+    $L_q \gets \left\lfloor \frac{(q - 1)n}{p} \right\rfloor + 1$
+    $R_q \gets \left\lfloor \frac{qn}{p} \right\rfloor$
+    $F[q] \gets \textsc{false}$
+    for $i \gets L_q$ to $R_q$ do
+        if $A[i] = x$ then
+            $F[q] \gets \textsc{true}$
+
+for $d \gets 0$ to $\lceil \log_2 p \rceil - 1$ do
+    for all $q \in \{1,\dots,p\}$ in parallel do
+        if $(q - 1) \bmod 2^{d+1} = 0$ and $q + 2^d \le p$ then
+            $F[q] \gets F[q] \lor F[q + 2^d]$
+
+return $F[1]$
+\end{lstlisting}
+\end{ppprogram}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.85\textwidth]{tree_search.png}
+  \caption{Block-partitioned search over an array.}
+  \label{fig:block-search-part}
+\end{figure}
+
+\FloatBarrier
 
 \section{Tree-Based Parallel Addition}
 A naive parallelisation of summation would let all processors update one shared
-\ppinline{sum} variable. This is a poor design: the updates must be serialised or
-protected, so the resulting algorithm gains little or no speedup.
+\ppinline{sum} variable. This is a poor design on account of race conditions. 
+Thus the updates must be serialised or protected, so the resulting naive
+algorithm gains little or no speedup.
 
-The correct approach is a reduction tree. Assume for simplicity that $n$ is a power
+One correct approach is a\hyperref[fig:og-tree-sum]{reduction tree}. Assume for simplicity that $n$ is a power
 of two. In round 1, adjacent pairs are added. In round 2, the stride doubles and
 the partial sums of length two are combined into sums of length four. After
 $\log_2 n$ rounds, one processor holds the total sum of all elements.
@@ -142,20 +189,69 @@ steps. This yields
 \[
 T(n,p) = \Theta\left(\frac{n}{p} + \log p\right),
 \]
-which matches the block-partitioned search bound.
+which matches the block-partitioned search bound. The same two-phase idea is
+shown \hyperref[fig:block-tree-sum]{pictorially} and written explicitly in
+\hyperref[prog:block-parallel-sum]{the blocked tree-sum pseudocode}.
 
 \begin{pppitfall}
-Work and cost are not the same quantity. A reduction tree performs only $\Theta(n)$
+Work and cost are not the same quantity in every case. A reduction tree performs only $\Theta(n)$
 additions, but if too many processors sit idle across too many rounds, the total
-cost can still be $\Theta(n \log n)$.
+cost can still be $\Theta(n \log n)$. Thus a better approach is to free half of the processors after each round
+, so that the cost remains $\Theta(n)$. 
 \end{pppitfall}
 
-\scribefigureplaceholder{Reduction tree for parallel addition}{
-Illustrate pairwise additions across rounds, with the stride doubling at each level
-until a single root stores the total sum.
-}
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{tree_sum.png}
+  \label{fig:og-tree-sum}
+  \caption{Reduction tree for parallel addition.}
+\end{figure}
 
-\scribecodeplaceholder{Stride-based tree reduction for summation}{prog:parallel-sum-placeholder}
+\begin{ppprogram}{Stride-based tree reduction for summation}{prog:parallel-sum}
+\begin{lstlisting}[language=Pseudocode,style=pppseudocode]
+Input:  array $A[1 \dots n]$, where $n$ is a power of two
+Output: total sum stored in $A[n]$
+
+for $d \gets 0$ to $\log_2 n - 1$ do
+    for all $k \in \{1,\dots,n\}$ in parallel do
+        if $k \bmod 2^{d+1} = 0$ then
+            $A[k] \gets A[k - 2^d] + A[k]$
+
+return $A[n]$
+\end{lstlisting}
+\end{ppprogram}
+
+
+\begin{ppprogram}{Blocked tree reduction for cost-optimal summation}{prog:block-parallel-sum}
+\begin{lstlisting}[language=Pseudocode,style=pppseudocode]
+Input:  array $A[1 \dots n]$, $p$ processors
+Output: total sum of all entries
+
+for all $q \in \{1,\dots,p\}$ in parallel do
+    $L_q \gets \left\lfloor \frac{(q - 1)n}{p} \right\rfloor + 1$
+    $R_q \gets \left\lfloor \frac{qn}{p} \right\rfloor$
+    $S[q] \gets 0$
+    for $i \gets L_q$ to $R_q$ do
+        $S[q] \gets S[q] + A[i]$
+
+for $d \gets 0$ to $\lceil \log_2 p \rceil - 1$ do
+    for all $q \in \{1,\dots,p\}$ in parallel do
+        if $(q - 1) \bmod 2^{d+1} = 0$ and $q + 2^d \le p$ then
+            $S[q] \gets S[q] + S[q + 2^d]$
+
+return $S[1]$
+\end{lstlisting}
+\end{ppprogram}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\textwidth]{tree_sum_block.png}
+  \caption{Blocked parallel summation: each processor first computes a local block
+  sum, and the $p$ block sums are then combined by a tree reduction.}
+  \label{fig:block-tree-sum}
+\end{figure}
+
+\FloatBarrier
 
 \section{Parallel Prefix Sums}
 The prefix-sum or scan problem asks us to transform an input array
@@ -175,6 +271,28 @@ The Hillis-Steele scan proceeds in rounds. At round $d$, processor $i$ adds into
 its current value the entry from position $i - 2^{d-1}$, provided that this index
 exists. Conceptually, each round must read values from the \emph{previous} round,
 not partially updated values from the current round.
+
+\begin{ppprogram}{Hillis-Steele inclusive scan}{prog:hillis-steele}
+\begin{lstlisting}[language=Pseudocode,style=pppseudocode]
+Input:  array $A[1 \dots n]$
+Output: inclusive prefix sums $B[1 \dots n]$
+
+for all $i \in \{1,\dots,n\}$ in parallel do
+    $B[i] \gets A[i]$
+
+for $d \gets 1$ to $\lceil \log_2 n \rceil$ do
+    for all $i \in \{1,\dots,n\}$ in parallel do
+        if $i > 2^{d-1}$ then
+            $T[i] \gets B[i] + B[i - 2^{d-1}]$
+        else
+            $T[i] \gets B[i]$
+
+    for all $i \in \{1,\dots,n\}$ in parallel do
+        $B[i] \gets T[i]$
+
+return $B$
+\end{lstlisting}
+\end{ppprogram}
 
 \paragraph{Correctness proof by induction.}
 Let $B^{(0)}[i] = A[i]$. For each round $d \ge 1$, define
@@ -243,12 +361,11 @@ The time is $\Theta(\log n)$ on $n$ processors, but every round touches $\Theta(
 entries, so the total work is $\Theta(n \log n)$. Thus Hillis-Steele is easy to
 parallelise, but it is not work-efficient \citep{hillis1986,harris2007scan}.
 
-\scribefigureplaceholder{Round-by-round view of Hillis-Steele scan}{
-Show the array after each doubling step $d = 1,2,3$ so that the dependency pattern
-from index $i - 2^{d-1}$ is visually clear.
-}
-
-\scribecodeplaceholder{Hillis-Steele inclusive scan}{prog:hillis-steele-placeholder}
+\begin{center}
+  \includegraphics[width=\textwidth]{hill_steele.png}
+  \captionsetup{hypcap=false}
+  \captionof{figure}{Round-by-round view of the Hillis-Steele scan.}
+\end{center}
 
 \subsection{Blelloch Scan}
 Blelloch's algorithm improves the work bound by using two tree phases
@@ -267,24 +384,80 @@ receives $p$ and the right child receives $p + t$. Repeating this from the root
 to the leaves yields the \emph{exclusive} scan.
 
 The inclusive scan can be recovered by adding the original input element-wise to
-the exclusive result. Across both phases, the total work is $\Theta(n)$ and the
-parallel time is $\Theta(\log n)$ on $n$ processors, so Blelloch scan is work-efficient.
+the exclusive result. As shown in Figure~\ref{fig:blelloch-scan}, the upsweep
+phase is represented by purple arrows and the downsweep phase by green arrows.
+At level $d$ of either phase, only $\frac{n}{2^{d+1}}$ internal updates are
+performed, so each phase does
+\[
+\frac{n}{2} + \frac{n}{4} + \cdots + 1 = O(n)
+\]
+work. Since the green and purple phases differ only by a constant factor of two,
+the total work remains $O(n)$, while the parallel time is still $\Theta(\log n)$.
+Therefore Blelloch scan is work-efficient.
+
+\begin{ppprogram}{Blelloch exclusive scan with inclusive conversion}{prog:blelloch}
+\begin{lstlisting}[language=Pseudocode,style=pppseudocode]
+Input:  array $A[0 \dots n-1]$, where $n$ is a power of two
+Output: exclusive scan $B[0 \dots n-1]$
+
+for all $i \in \{0,\dots,n-1\}$ in parallel do
+    $B[i] \gets A[i]$
+
+// Upsweep phase
+for $d \gets 0$ to $\log_2 n - 1$ do
+    for all $k \in \{0, 2^{d+1}, 2 \cdot 2^{d+1}, \dots, n - 2^{d+1}\}$ in parallel do
+        $B[k + 2^{d+1} - 1] \gets B[k + 2^d - 1] + B[k + 2^{d+1} - 1]$
+
+$B[n-1] \gets 0$
+
+// Downsweep phase
+for $d \gets \log_2 n - 1$ downto $0$ do
+    for all $k \in \{0, 2^{d+1}, 2 \cdot 2^{d+1}, \dots, n - 2^{d+1}\}$ in parallel do
+        $t \gets B[k + 2^d - 1]$
+        $B[k + 2^d - 1] \gets B[k + 2^{d+1} - 1]$
+        $B[k + 2^{d+1} - 1] \gets t + B[k + 2^{d+1} - 1]$
+
+return $B$
+\end{lstlisting}
+\end{ppprogram}
 
 \begin{ppkey}
 Hillis-Steele gives a simple scan in $\Theta(\log n)$ time but spends $\Theta(n \log n)$
 work. Blelloch keeps the same asymptotic time while reducing the work to $\Theta(n)$.
 \end{ppkey}
 
-\scribefigureplaceholder{Blelloch upsweep and downsweep}{
-Draw a binary tree over the array, mark subtree sums during the upsweep, then show
-how setting the root to $0$ and propagating offsets downward produces the exclusive scan.
-}
+\begin{center}
+  \includegraphics[width=0.92\textwidth]{blelloch.png}
+  \captionsetup{hypcap=false}
+  \captionof{figure}{Blelloch scan: purple arrows show the upsweep phase, while green arrows show the downsweep phase (The red values show the down sweep updates)}
+  \label{fig:blelloch-scan}
+\end{center}
 
-\scribecodeplaceholder{Blelloch exclusive scan with an inclusive conversion step}{prog:blelloch-placeholder}
+\section{Main Takeaways}
+\begin{table}[ht]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.33\textwidth} >{\raggedright\arraybackslash}p{0.19\textwidth} >{\raggedright\arraybackslash}p{0.19\textwidth} >{\raggedright\arraybackslash}X@{}}
+\toprule
+Algorithm & Parallel time & Work & Work efficient? \\
+\midrule
+Parallel search with tree OR-reduction & $\Theta(n/p + \log p)$ & $\Theta(n + p \log p)$ & Conditional \\
+Tree-based sum reduction & $\Theta(\log n)$ & $\Theta(n)$ & Yes \\
+Hillis-Steele scan & $\Theta(\log n)$ & $\Theta(n \log n)$ & No \\
+Blelloch scan & $\Theta(\log n)$ & $\Theta(n)$ & Yes \\
+\bottomrule
+\end{tabularx}
+\caption{Comparison of the main parallel algorithms discussed in this chapter.}
+\label{tab:algorithm-summary}
+\end{table}
 
-\section{Summary}
-Three themes recur across all of these examples. First, the computation model
-matters: the legality and cost of synchronisation depend on whether we are in EREW,
-CREW, or CRCW. Second, speedup alone is not enough; cost and work-efficiency are
-equally important. Third, good parallel algorithms combine local work with a small
-number of structured synchronisation phases, typically reductions or scans.
+For block-partitioned search, the work bound is $\Theta(n + p \log p)$, so the
+algorithm is work-efficient when $p \log p = O(n)$.
+
+\begin{itemize}
+\item The PRAM model separates algorithm design from machine details, but the choice of EREW, CREW, or CRCW still changes which synchronisation patterns are legal.
+\item Tree-structured reductions give the core design pattern behind both parallel search and parallel summation.
+\item Hillis-Steele achieves logarithmic parallel time, but it pays for that simplicity with $\Theta(n \log n)$ total work.
+\item Blelloch retains logarithmic parallel time while reducing the work to $\Theta(n)$, making it the asymptotically stronger scan algorithm.
+\item Speedup alone can be misleading; work, cost, and work-efficiency are necessary to judge whether a parallel algorithm is truly worthwhile.
+\end{itemize}
