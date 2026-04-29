@@ -44,8 +44,7 @@ T_o(n,p) = C(n,p) - T(n,1).
 An algorithm is \ppterm{cost-optimal} when $C(n,p) = O(T(n,1))$, and is
 \ppterm{work-efficient} when the total number of primitive operations remains
 within a constant factor of the best sequential algorithm. These notions will
-be used repeatedly when comparing search, reduction, and prefix-sum algorithms
-\citep{amdahl1967,gustafson1988,pacheco2011}.
+be used repeatedly when comparing search, reduction, and prefix-sum algorithms.
 
 \begin{ppkey}
  Fixed-size speedup is limited by the sequential fraction of the computation,
@@ -173,15 +172,16 @@ of two. In round 1, adjacent pairs are added. In round 2, the stride doubles and
 the partial sums of length two are combined into sums of length four. After
 $\log_2 n$ rounds, one processor holds the total sum of all elements.
 
-With one processor per active array position in each round, the parallel time is
+Counting only the processors that are active in each round, the parallel time is
 $\Theta(\log n)$. The total amount of arithmetic work is
 \[
 \frac{n}{2} + \frac{n}{4} + \cdots + 1 = \Theta(n),
 \]
-which matches sequential summation up to constant factors. However, if $n$ processors
-are reserved throughout all $\log n$ rounds, the cost becomes $\Theta(n \log n)$,
-so the algorithm is not cost-optimal in that raw form even though the arithmetic
-work itself is linear.
+which matches sequential summation up to constant factors. Thus the reduction tree
+is work-efficient. Equivalently, if processors that become inactive are released
+after each round, the total processor-time cost is also $\Theta(n)$. The larger
+$\Theta(n \log n)$ cost appears only if all $n$ processors are charged for all
+$\log n$ rounds even after most of them have become idle.
 
 For $p < n$, a standard cost-optimal version first computes local sums over blocks
 of size about $n/p$, and then reduces the $p$ block sums in $\Theta(\log p)$ more
@@ -194,10 +194,11 @@ shown \hyperref[fig:block-tree-sum]{pictorially} and written explicitly in
 \hyperref[prog:block-parallel-sum]{the blocked tree-sum pseudocode}.
 
 \begin{pppitfall}
-Work and cost are not the same quantity in every case. A reduction tree performs only $\Theta(n)$
-additions, but if too many processors sit idle across too many rounds, the total
-cost can still be $\Theta(n \log n)$. Thus a better approach is to free half of the processors after each round
-, so that the cost remains $\Theta(n)$. 
+Work and cost differ here only because of how idle processors are charged. The
+reduction tree itself performs $\Theta(n)$ additions and is work-efficient. If
+inactive processors are freed after each round, the cost stays $\Theta(n)$; if
+all $n$ processors are charged across all $\log n$ rounds, the cost becomes
+$\Theta(n \log n)$.
 \end{pppitfall}
 
 \begin{figure}[ht]
@@ -267,10 +268,12 @@ with the convention that $B[1] = 0$. Sequentially, either version takes $\Theta(
 time.
 
 \subsection{Hillis-Steele Scan}
-The Hillis-Steele scan proceeds in rounds. At round $d$, processor $i$ adds into
+The \hyperref[prog:hillis-steele]{Hillis-Steele} scan proceeds in rounds. At round $d$, processor $i$ adds into
 its current value the entry from position $i - 2^{d-1}$, provided that this index
 exists. Conceptually, each round must read values from the \emph{previous} round,
-not partially updated values from the current round.
+not partially updated values from the current round. For that reason, the
+pseudocode below uses a temporary array to hold the next-round values before
+copying them back.
 
 \begin{ppprogram}{Hillis-Steele inclusive scan}{prog:hillis-steele}
 \begin{lstlisting}[language=Pseudocode,style=pppseudocode]
@@ -283,19 +286,27 @@ for all $i \in \{1,\dots,n\}$ in parallel do
 for $d \gets 1$ to $\lceil \log_2 n \rceil$ do
     for all $i \in \{1,\dots,n\}$ in parallel do
         if $i > 2^{d-1}$ then
-            $T[i] \gets B[i] + B[i - 2^{d-1}]$
+            $\mathrm{Next}[i] \gets B[i] + B[i - 2^{d-1}]$
         else
-            $T[i] \gets B[i]$
+            $\mathrm{Next}[i] \gets B[i]$
 
-    for all $i \in \{1,\dots,n\}$ in parallel do
-        $B[i] \gets T[i]$
+    for all $i \in \{1,\dots,n\}$ in parallel do  
+        // Effectively O(1) time in our model
+        $B[i] \gets \mathrm{Next}[i]$
 
 return $B$
 \end{lstlisting}
 \end{ppprogram}
 
+The temporary array is essential in this formulation: if processors overwrote
+$B[i]$ immediately, then later reads in the same round could observe a mixture of
+old and new values. The second parallel loop is the commit step that turns the
+newly computed values into the state for the next round.
+
 \paragraph{Correctness proof by induction.}
-Let $B^{(0)}[i] = A[i]$. For each round $d \ge 1$, define
+Let $B^{(0)}[i] = A[i]$. For each round $d \ge 1$, let $B^{(d)}$ denote the
+contents of array $B$ \emph{after} the copy-back step at the end of round $d$.
+Then
 \[
 B^{(d)}[i] =
 \begin{cases}
@@ -320,7 +331,8 @@ $B^{(d)}[i] = B^{(d-1)}[i]$. By the induction hypothesis this is already
 \sum_{j=1}^{i} A[j]
 = \sum_{j=\max(1,\, i - 2^d + 1)}^{i} A[j],
 \]
-because $i - 2^d + 1 \le 1$ in this case.
+because $i \le 2^{d-1}$ implies both $i - 2^{d-1} + 1 \le 1$ and
+$i - 2^d + 1 \le 1$.
 
 If instead $i > 2^{d-1}$, then by the update rule and the induction hypothesis,
 \begin{align*}
@@ -346,20 +358,15 @@ For the example array
 [3,1,4,5,1,9,2],
 \]
 the inclusive scan evolves as follows:
-\[
-[3,4,5,9,6,10,11],
-\]
-\[
-[3,4,8,13,11,19,17],
-\]
-\[
-[3,4,8,13,14,23,25].
-\]
-After $\lceil \log_2 n \rceil$ rounds, every position holds the correct prefix sum.
-
-The time is $\Theta(\log n)$ on $n$ processors, but every round touches $\Theta(n)$
-entries, so the total work is $\Theta(n \log n)$. Thus Hillis-Steele is easy to
-parallelise, but it is not work-efficient \citep{hillis1986,harris2007scan}.
+% \[
+% [3,4,5,9,6,10,11],
+% \]
+% \[
+% [3,4,8,13,11,19,17],
+% \]
+% \[
+% [3,4,8,13,14,23,25].
+% \]
 
 \begin{center}
   \includegraphics[width=\textwidth]{hill_steele.png}
@@ -367,9 +374,17 @@ parallelise, but it is not work-efficient \citep{hillis1986,harris2007scan}.
   \captionof{figure}{Round-by-round view of the Hillis-Steele scan.}
 \end{center}
 
+\FloatBarrier
+
+After $\lceil \log_2 n \rceil$ rounds, every position holds the correct prefix sum.
+
+The time is $\Theta(\log n)$ on $n$ processors, but every round touches $\Theta(n)$
+entries, so the total work is $\Theta(n \log n)$. Thus Hillis-Steele is easy to
+parallelise, but it is not work-efficient.
+
 \subsection{Blelloch Scan}
-Blelloch's algorithm improves the work bound by using two tree phases
-\citep{blelloch1990,harris2007scan}. For simplicity, assume the input size is a
+\hyperref[prog:blelloch]{Blelloch's algorithm} improves the work bound by using two tree phases. 
+For simplicity, assume the input size is a
 power of two; otherwise pad the array with zeros up to the next power of two.
 
 In the \ppterm{upsweep} (or reduction) phase, a balanced binary tree is built over
@@ -384,7 +399,7 @@ receives $p$ and the right child receives $p + t$. Repeating this from the root
 to the leaves yields the \emph{exclusive} scan.
 
 The inclusive scan can be recovered by adding the original input element-wise to
-the exclusive result. As shown in Figure~\ref{fig:blelloch-scan}, the upsweep
+the exclusive result. As shown \hyperref[fig:blelloch-scan]{here}, the upsweep
 phase is represented by purple arrows and the downsweep phase by green arrows.
 At level $d$ of either phase, only $\frac{n}{2^{d+1}}$ internal updates are
 performed, so each phase does
@@ -442,7 +457,7 @@ work. Blelloch keeps the same asymptotic time while reducing the work to $\Theta
 Algorithm & Parallel time & Work & Work efficient? \\
 \midrule
 Parallel search with tree OR-reduction & $\Theta(n/p + \log p)$ & $\Theta(n + p \log p)$ & Conditional \\
-Tree-based sum reduction & $\Theta(\log n)$ & $\Theta(n)$ & Yes \\
+Tree-based sum reduction (active processors only) & $\Theta(\log n)$ & $\Theta(n)$ & Yes \\
 Hillis-Steele scan & $\Theta(\log n)$ & $\Theta(n \log n)$ & No \\
 Blelloch scan & $\Theta(\log n)$ & $\Theta(n)$ & Yes \\
 \bottomrule

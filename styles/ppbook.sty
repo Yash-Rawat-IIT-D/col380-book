@@ -19,7 +19,8 @@
 
 % --- Spacing and paragraphs ---
 \RequirePackage{setspace}
-\onehalfspacing
+\setstretch{1.18}
+\AtBeginDocument{\small}
 \setlength{\parindent}{1.1em}
 \setlength{\parskip}{0pt}
 
@@ -50,18 +51,18 @@
 
 % Chapter title: big, clean, with a thin rule
 \titleformat{\chapter}
-  {\normalfont\huge\bfseries\color{PPBlue}}
+  {\normalfont\Large\bfseries\color{PPBlue}\raggedright}
   {\thechapter}{0.8em}{}
 \titlespacing*{\chapter}{0pt}{-10pt}{18pt}
 
 % Section titles: consistent textbook look
 \titleformat{\section}
-  {\normalfont\Large\bfseries\color{PPGray}}
+  {\normalfont\large\bfseries\color{PPGray}}
   {\thesection}{0.6em}{}
 \titlespacing*{\section}{0pt}{14pt}{8pt}
 
 \titleformat{\subsection}
-  {\normalfont\large\bfseries\color{PPGray}}
+  {\normalfont\normalsize\bfseries\color{PPGray}}
   {\thesubsection}{0.6em}{}
 \titlespacing*{\subsection}{0pt}{10pt}{6pt}
 
